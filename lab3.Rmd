@@ -1,0 +1,136 @@
+---
+title: "Лабораторная работа №3"
+author: "Редченко Евгений"
+date: "2022-12-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+***
+## Задание 6 ##
+
+ExpImp.Rdata Приведите данные к формату tidydata. Отобразите значения суммарного экспорта и импорта по регионам в виде столбчатой диаграммы [сгруппировав значения по названию региона]. Экспорт и импорт обозначьте разными цветами. Сделайте второй график, на котором значения экспорта и импорта расположите по разные стороны относительно оси x. Подпишите величины экспорта и импорта.
+
+***
+Используемые пакеты:
+```{r warning=FALSE}
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+***
+Считываем данные:
+```{r warning=FALSE}
+setwd("C:\\Users\\Evgeniy\\Desktop\\study\\R\\lab-3")
+load("data\\ExpImp.RData")
+```
+
+***
+Функция для отрисовки графиков
+```{r warning=FALSE}
+make_charts <- function(df, region, flag) {
+  df <- df[complete.cases(df),]
+  for (i in 2:length(names(df))) {
+    df[[i]] <- gsub("-", 0, df[[i]])
+    df[[i]] <- as.numeric(df[[i]])
+  }
+  
+  filter1 <- str_detect(df$Регион, 'федеральный округ')
+  df <- mutate(df, Округ = if_else(filter1, Регион, NULL))
+  df <- fill(df, Округ)
+  filter2 <- !str_detect(df$Регион, 'Федерация|федеральный округ')
+  df <- filter(df, filter2)
+  
+  export <- select_at(df, vars(matches("Экспорт")))
+  import <- select_at(df, vars(matches("Импорт")))
+  
+  export$Сумма <- rowSums(export, na.rm = TRUE)
+  import$Сумма <- rowSums(import, na.rm = TRUE)
+  
+  df$Export <- export$Сумма
+  df$Import <- import$Сумма
+  
+  if (flag == TRUE) {
+    df[,"Import"] <- -df[,"Import"]
+  }
+  
+  df <- filter(df, Округ == region)
+  df <- df[, c("Регион", "Export", "Import")]
+  df <- pivot_longer(df, !Регион, names_to = "Export/Export", values_to = "Value")
+  
+  
+  result <- df %>% group_by(Регион, `Export/Export`) 
+  result <- result %>% summarise(sum = sum(`Value`))
+  
+  result |> ggplot(mapping = aes(x = Регион, y = sum, fill = `Export/Export`)) +
+            geom_col(color = 'black', size = 0, position = 'dodge') + 
+            ggtitle(region) + 
+            ylab('млн долл. США') + 
+            coord_flip()
+}
+```
+
+***
+Строим два варианта графика (обычный и отзеркаленный). Для этого передаем параметры FALSE и TRUE соответственно
+```{r}
+make_charts(ExpImp, 'Северо-Западный федеральный округ', FALSE)
+make_charts(ExpImp, 'Северо-Западный федеральный округ', TRUE)
+```
+
+***
+## Задание 11 ##
+
+На портале открытых данных Тульской области есть данные о распределении площади лесов и запасов древесины по преобладающим породам и группам возраста https://opendata71.ru/opendata/7107096442-stateforestregisterTularegion/table. Скачайте эти данные в виде таблицы CSV и постройте по ним круговую и столбчатую диаграмму для категории Площадь земель, занятых лесными насаждениями (покрытых лесной растительностью), всего. Подберите цвета, попробуйте изменить ориентировку столбцов на горизонтальную, а для круговой диаграммы поменяейте угол поворота. Подпишите значения.
+
+***
+Используемые пакеты:
+```{r warning=FALSE}
+library(ggplot2)
+```
+
+***
+Считываем данные:
+```{r warning=FALSE}
+setwd("C:\\Users\\Evgeniy\\Desktop\\study\\R\\lab-3")
+df <- read.csv(file = "data\\data_tula.csv", sep=";")
+```
+
+***
+Функция для отрисовки графиков
+```{r warning=FALSE}
+make_charts <- function(df) {
+  chart1 <- ggplot(data = df, mapping = aes(x = Dominant_breed, y = Value_indicator, fill = Dominant_breed))
+  chart1 <- chart1 + xlab("Породы") 
+  chart1 <- chart1 + ylab("Тыс. га")
+  chart1 <- chart1 + ggtitle('Площадь земель, занятых лесными насаждениями') 
+  chart1 <- chart1 + geom_col() 
+  chart1 <- chart1 + coord_flip()
+  chart1 <- chart1 + geom_text(aes(label = Value_indicator), vjust = 0.5)
+  chart1 <- chart1 + guides(fill = guide_legend(title = "Породы", override.aes = aes(label = "")))
+  print(chart1)
+  
+  chart2 <- ggplot(data = df, mapping = aes(x = '', y = Value_indicator, fill = Dominant_breed))
+  chart2 <- chart2 + ylab('Тыс. га')
+  chart2 <- chart2 + ggtitle('Площадь земель, занятых лесными насаждениями') 
+  chart2 <- chart2 + geom_col() 
+  chart2 <- chart2 + coord_polar(theta = 'y')
+  chart2 <- chart2 + guides(fill = guide_legend(title = "Породы", override.aes = aes(label = "")))
+  print(chart2)
+}
+```
+
+***
+Изменяем названия столбцов, выбираем среди них нужные, меняем тип переменной и строим графики
+```{r}
+colnames(df) <- c("Dominant_breed", "Name_indicator", "Measure", "Value_indicator")
+df <- subset(df, Name_indicator == "Площадь земель, занятых лесными насаждениями (покрытых лесной растительностью), всего")
+df[[4]] <- sub(',', '.', df[[4]])
+df[[4]] <- as.numeric(df[[4]])
+
+make_charts(df)
+```
